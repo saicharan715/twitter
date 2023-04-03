@@ -1,0 +1,12 @@
+GET http://localhost:3000/user/tweets/feed/
+
+###
+
+POST http://localhost:3000/login/
+Content-Type: application/json
+
+{
+  "username":"JoeBiden",
+  "password":"biden@123"
+}
+###
