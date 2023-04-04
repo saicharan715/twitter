@@ -78,7 +78,7 @@ app.post("/register/", async (request, response) => {
   let hashedPassword = await bcrypt.hash(password, 10);
 
   let checkUsername = `
-    SELECT * FROM user WHERE username = ${username};`;
+    SELECT * FROM user WHERE username = '${username}';`;
 
   let userData = await db.run(checkUsername);
 
@@ -108,7 +108,7 @@ app.post("/register/", async (request, response) => {
 app.post("/login/", async (request, response) => {
   const { username, password } = request.body;
   const selectUserQuery = `
-    SELECT * FROM user WHERE username = ${username};`;
+    SELECT * FROM user WHERE username = '${username}';`;
 
   const dbUser = await db.get(selectUserQuery);
 
@@ -128,22 +128,153 @@ app.post("/login/", async (request, response) => {
   }
 });
 
+//API 3
 app.get("/user/tweets/feed/", authenticateToken, async (request, response) => {
+  const { username } = request.params;
   const getTweets = `
-    SELECT username.user,
-    tweet.tweet,
-    dateTime.tweet
-    FROM tweet INNER JOIN user 
-    WHERE username.user = ${username}
-    AND following_user_id.tweet = ${followingUserId}
-    ORDER BY
-    ASC
-    OFFSET 0 
-    LIMIT 5;`;
+    SELECT username,
+    tweet,
+    date_time
+    FROM user NATURAL JOIN tweet 
+    WHERE username = '${username}' 
+    LIMIT 4
+    ;`;
 
   const result = await db.all(getTweets);
 
   response.send(result.map((each) => convert(each)));
+});
+
+//API 4
+app.get("/user/following/", authenticateToken, async (request, response) => {
+  const { followingUserId } = request.params;
+  const getFollowingNamesQuery = `
+    SELECT name FROM user NATURAL JOIN follower 
+    WHERE following_user_id = '${followingUserId}';`;
+
+  const result = await db.all(getFollowingNamesQuery);
+  response.send(result);
+});
+
+//API 5
+app.get("/user/followers/", authenticateToken, async (request, response) => {
+  const { followerUserId } = request.params;
+  const getFollowerNamesQuery = `
+    SELECT name FROM user NATURAL JOIN follower
+    WHERE follower_user_id = '${followerUserId}';`;
+
+  const result = await db.all(getFollowerNamesQuery);
+  response.send(result);
+});
+
+//API 6
+app.get("/tweets/:tweetId/", authenticateToken, async (request, response) => {
+  const { tweetId } = request.params;
+
+  const getTweets = `
+    SELECT tweet,
+    SUM(like_id.like) AS likes,
+    SUM(reply.reply) AS replies,
+    date_time AS dateTime
+    FROM tweet NATURAL JOIN like NATURAL JOIN reply
+    WHERE tweet_id = '${tweetId}';`;
+
+  const tweet = await db.get(getTweets);
+  if (tweet === undefined) {
+    respose.status(401);
+    response.send("Invalid Request");
+  } else {
+    response.send({ tweet });
+  }
+});
+
+//API 7
+app.get(
+  "/tweets/:tweetId/likes/",
+  authenticateToken,
+  async (request, response) => {
+    const { tweetId } = request.params;
+
+    const getLikesQuery = `
+    SELECT SUM(like_id) AS likes
+    FROM like NATURAL JOIN tweet NATURAL JOIN user
+    WHERE tweet_id = '${tweetId}';`;
+
+    const result = await db.all(getLikesQuery);
+    if (result === undefined) {
+      response.status(401);
+      response.send("Invalid Request");
+    } else {
+      response.send({ result: [user.name] });
+    }
+  }
+);
+
+//API 8
+app.get(
+  "/tweets/:tweetId/replies/",
+  authenticateToken,
+  async (request, response) => {
+    const { tweetId } = request.params;
+
+    const getReplies = `
+    SELECT name,
+    reply
+    FROM user NATURAL JOIN reply INNER JOIN tweet ON tweet_id.tweet = tweet_id.reply
+    WHERE tweet_id = '${tweetId}';`;
+
+    const result = await db.all(getReplies);
+    if (result === undefined) {
+      response.status(401);
+      response.send("Invalid Request");
+    } else {
+      response.send({ replies: [result] });
+    }
+  }
+);
+
+//API 9
+app.get("/user/tweets/", authenticateToken, async (request, response) => {
+  const { userId } = request.params;
+
+  const getTweets = `
+    SELECT tweet.tweet,
+    SUM(like_id) AS likes,
+    SUM(reply) AS replies,
+    date_time AS dateTime
+    FROM tweet NATURAL JOIN like NATURAL JOIN reply NATURAL JOIN user
+    WHERE user_id = '${userId}';`;
+
+  const result = await db.all(getTweets);
+  response.send(result);
+});
+
+//API 10
+app.post("/user/tweets/", authenticateToken, async (request, response) => {
+  const { tweet } = request.body;
+
+  const addTweet = `
+    INSERT INTO tweet(tweet)
+    VALUES ('${tweet}');`;
+
+  const createTweet = await db.run(addTweet);
+  response.send("Created a Tweet");
+});
+
+//API 11
+app.delete("/tweets/:tweetId/", async (request, response) => {
+  const { tweetId } = request.params;
+
+  const deleteTweet = `
+    DELETE FROM tweet WHERE tweet_id = ${tweetId};`;
+
+  const result = await db.run(deleteTweet);
+  if (result === undefined) {
+    response.status(401);
+    response.send("Invalid Request");
+  } else {
+    response.send("Tweet Removed");
+  }
 });
 
 module.exports = app;
